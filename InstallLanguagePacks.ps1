@@ -116,7 +116,7 @@ function Install-LanguagePack {
     } 
 }
 
- Install-LanguagePack -LanguageList $LanguageList
+Install-LanguagePack -LanguageList "Swedish (Sweden)","Norwegian, Bokmål (Norway)","English (United States)"
 
  #############
 #    END    #
