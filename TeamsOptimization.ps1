@@ -10,15 +10,19 @@
 
 [CmdletBinding()]
 Param (
+    # Används endast om du kör Teams 1.0-vägen (MSI). Lämnas orörd om du vill köra nya Teams 2.0 via bootstrappern.
     [Parameter()]
     [string]$TeamsDownloadLink = "https://go.microsoft.com/fwlink/?linkid=2196106",
 
+    # VC++ 2015–2022 x64 (permalink)
     [Parameter()]
     [string]$VCRedistributableLink = "https://aka.ms/vs/17/release/vc_redist.x64.exe",
 
+    # Remote Desktop WebRTC Redirector Service (MSI, aka.ms-länk)
     [Parameter()]
     [string]$WebRTCInstaller = "https://aka.ms/msrdcwebrtcsvc/msi",
 
+    # Nya Teams (TeamsBootstrapper.exe) – maskinvid installation
     [Parameter()]
     [string]$TeamsBootStrapperUrl = "https://go.microsoft.com/fwlink/?linkid=2243204&clcid=0x409"
 )
@@ -30,7 +34,7 @@ function InstallTeamsOptimizationforAVD($TeamsDownloadLink, $VCRedistributableLi
         Write-Host "Starting AVD AIB Customization: Teams Optimization : $((Get-Date).ToUniversalTime()) "
 
         $guid = [guid]::NewGuid().Guid
-        $tempFolder = (Join-Path -Path "C:\temp\" -ChildPath $guid)
+        $tempFolder = Join-Path "C:\temp" $guid
 
         if (!(Test-Path -Path $tempFolder)) {
             New-Item -Path $tempFolder -ItemType Directory | Out-Null
@@ -39,74 +43,74 @@ function InstallTeamsOptimizationforAVD($TeamsDownloadLink, $VCRedistributableLi
     }
 
     Process {
-        try {     
-            # Set reg key
+        try {
+            # Markera miljön som AVD för Teams
             New-Item -Path HKLM:\SOFTWARE\Microsoft -Name "Teams" -Force -ErrorAction Ignore | Out-Null
             $registryPath  = "HKLM:\SOFTWARE\Microsoft\Teams"
             $registryKey   = "IsWVDEnvironment"
             $registryValue = "1"
             Set-RegKey -registryPath $registryPath -registryKey $registryKey -registryValue $registryValue 
             
-            # Install the latest version of the Microsoft Visual C++ Redistributable
-            Write-Host "AVD AIB Customization: Teams Optimization - Starting the installation of latest Microsoft Visual C++ Redistributable"
-            $appName    = 'teams'
+            # Installera Microsoft Visual C++ Redistributable (x64)
+            Write-Host "AVD AIB Customization: Teams Optimization - Installing Microsoft Visual C++ Redistributable"
+            $appName     = 'teams'
             New-Item -Path $tempFolder -Name $appName -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-            $LocalPath  = Join-Path $tempFolder $appName
+            $LocalPath   = Join-Path $tempFolder $appName
             $VCRedistExe = 'vc_redist.x64.exe'
             $outputPath  = Join-Path $LocalPath $VCRedistExe
             Invoke-WebRequest -Uri $VCRedistributableLink -OutFile $outputPath
-            Start-Process -FilePath $outputPath -ArgumentList "/install /quiet /norestart /log vcdist.log" -Wait
-            Write-Host "AVD AIB Customization: Teams Optimization - Finished the installation of latest Microsoft Visual C++ Redistributable"
+            Start-Process -FilePath $outputPath -ArgumentList "/install /quiet /norestart /log vcredist.log" -Wait
+            Write-Host "AVD AIB Customization: Teams Optimization - VC++ Redistributable installed"
 
-            # Install the Remote Desktop WebRTC Redirector Service
+            # Installera Remote Desktop WebRTC Redirector Service
             $webRTCMSI  = 'webSocketSvc.msi'
             $outputPath = Join-Path $LocalPath $webRTCMSI
             Invoke-WebRequest -Uri $WebRTCInstaller -OutFile $outputPath
             Start-Process -FilePath msiexec.exe -ArgumentList "/I `"$outputPath`" /quiet /norestart /log webSocket.log" -Wait
-            Write-Host "AVD AIB Customization: Teams Optimization - Finished the installation of the Teams WebSocket Service"
+            Write-Host "AVD AIB Customization: Teams Optimization - WebRTC Redirector installed"
 
-            # Install Teams
+            # Installera Teams
             if (-not [string]::IsNullOrWhiteSpace($TeamsBootStrapperUrl)) {
-                Write-Host "AVD AIB Customization: Teams Optimization - Requested to install Teams 2.0"
+                Write-Host "AVD AIB Customization: Teams Optimization - Installing NEW Teams (2.0) via bootstrapper"
 
-                # Allow side-loading for trusted apps
+                # Tillåt trusted sideloading (krävs ibland vid provisionering)
                 New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows" -Name "Appx" -Force -ErrorAction Ignore | Out-Null
                 New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Appx" -Name "AllowAllTrustedApps" -Value 1 -Force | Out-Null
                 New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Appx" -Name "AllowDevelopmentWithoutDevLicense" -Value 1 -Force | Out-Null
 
-                # WebView2 (krävs ibland för nya Teams)
-                Write-Host "AVD AIB Customization: Teams Optimization - Starting to install WebView2"
-                $EdgeWebView = Join-Path -Path $LocalPath -ChildPath 'WebView.exe'
+                # WebView2 – ofta krav för nya Teams
+                Write-Host "AVD AIB Customization: Teams Optimization - Installing Edge WebView2"
+                $EdgeWebView = Join-Path $LocalPath 'WebView.exe'
                 $webviewUrl  = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
                 Invoke-WebRequest -Uri $webviewUrl -OutFile $EdgeWebView
                 Start-Process -FilePath $EdgeWebView -NoNewWindow -Wait -ArgumentList "/silent /install"
-                Write-Host "AVD AIB Customization: Teams Optimization - Finished the installation of Edge WebView2"
+                Write-Host "AVD AIB Customization: Teams Optimization - Edge WebView2 installed"
 
-                Write-Host "AVD AIB Customization: Teams Optimization - Using teams bootstrapper to install Teams 2.0"
-                $teamsBootStrapperPath = Join-Path -Path $LocalPath -ChildPath 'teamsbootstrapper.exe'
+                # Teams 2.0 bootstrapper
+                $teamsBootStrapperPath = Join-Path $LocalPath 'teamsbootstrapper.exe'
                 Invoke-WebRequest -Uri $TeamsBootStrapperUrl -OutFile $teamsBootStrapperPath
-                Start-Process -FilePath $teamsBootStrapperPath -Wait -ArgumentList "-p" -NoNewWindow 
-                Write-Host "AVD AIB Customization: Teams Optimization - Finished installation of Teams"
+                Start-Process -FilePath $teamsBootStrapperPath -NoNewWindow -Wait -ArgumentList "-p"
+                Write-Host "AVD AIB Customization: Teams Optimization - Teams 2.0 installation complete"
 
-                $provisionedPackages = Get-AppxProvisionedPackage -Online
-                $isTeamsInstalled = $provisionedPackages | Where-Object { $_.PackageName -like '*MSTeams*' }
-                if ($isTeamsInstalled) {
-                    Write-Host "AVD AIB Customization: Teams Optimization - Get-AppxProvisionedPackage returned MSTeams."
+                # Verifiering (provisionerade paket)
+                $provisioned = Get-AppxProvisionedPackage -Online | Where-Object { $_.PackageName -like '*MSTeams*' }
+                if ($provisioned) {
+                    Write-Host "AVD AIB Customization: Teams Optimization - Provisioned package found for MSTeams."
                 } else {
-                    Write-Host "AVD AIB Customization: Teams Optimization - Get-AppxProvisionedPackage did not return MSTeams."
+                    Write-Host "AVD AIB Customization: Teams Optimization - MSTeams NOT found in provisioned packages."
                 }
             } 
             else {
-                Write-Host "AVD AIB Customization: Teams Optimization - Requested to install Teams 1.0"
+                Write-Host "AVD AIB Customization: Teams Optimization - Installing classic Teams (MSI)"
                 $teamsMsi   = 'teams.msi'
                 $outputPath = Join-Path $LocalPath $teamsMsi
                 Invoke-WebRequest -Uri $TeamsDownloadLink -OutFile $outputPath
-                Start-Process -FilePath msiexec.exe -ArgumentList "/I `"$outputPath`" /quiet /norestart /log teams.log ALLUSER=1 ALLUSERS=1" -Wait
-                Write-Host "AVD AIB Customization: Teams Optimization - Finished installation of Teams"
+                Start-Process -FilePath msiexec.exe -ArgumentList "/I `"$outputPath`" /quiet /norestart /log teams_msi.log ALLUSER=1 ALLUSERS=1" -Wait
+                Write-Host "AVD AIB Customization: Teams Optimization - Classic Teams installation complete"
             }
         }
         catch {
-            Write-Host "*** AVD AIB CUSTOMIZER PHASE ***  Teams Optimization  - Exception occured  *** : [$($_.Exception.Message)]"
+            Write-Host "*** AVD AIB CUSTOMIZER PHASE *** Teams Optimization - Exception occured: [$($_.Exception.Message)]"
         }    
     }
         
@@ -121,18 +125,18 @@ function InstallTeamsOptimizationforAVD($TeamsDownloadLink, $VCRedistributableLi
 
         $stopwatch.Stop()
         $elapsedTime = $stopwatch.Elapsed
-        Write-Host "*** AVD AIB CUSTOMIZER PHASE : Teams Optimization -  Exit Code: $LASTEXITCODE ***"    
+        Write-Host "*** AVD AIB CUSTOMIZER PHASE : Teams Optimization - Exit Code: $LASTEXITCODE ***"    
         Write-Host "Ending AVD AIB Customization : Teams Optimization - Time taken: $elapsedTime"
     }
 }
 
 function Set-RegKey($registryPath, $registryKey, $registryValue) {
     try {
-        Write-Host "*** AVD AIB CUSTOMIZER PHASE ***  Teams Optimization  - Setting  $registryKey with value $registryValue ***"
+        Write-Host "*** AVD AIB CUSTOMIZER PHASE *** Teams Optimization - Setting $registryKey to $registryValue ***"
         New-ItemProperty -Path $registryPath -Name $registryKey -Value $registryValue -PropertyType DWORD -Force -ErrorAction Stop | Out-Null
     }
     catch {
-        Write-Host "*** AVD AIB CUSTOMIZER PHASE ***  Teams Optimization  - Cannot add the registry key  $registryKey *** : [$($_.Exception.Message)]"
+        Write-Host "*** AVD AIB CUSTOMIZER PHASE *** Teams Optimization - Cannot add registry key $registryKey : [$($_.Exception.Message)]"
     }
 }
 
